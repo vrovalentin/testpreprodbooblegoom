@@ -167,9 +167,13 @@ export async function login(page: Page, loginValue = TEST_USER.login, password =
 
 /** Сменить город через окно выбора города (город хранится на сервере, cookie недостаточно). */
 export async function setCity(page: Page, city: string) {
-  await open(page, '/');
-  await page.locator('[data-city-no]').first().dispatchEvent('click');
   const item = page.locator('.city-subnav__i', { hasText: city }).first();
+  // Окно городов грузится AJAX-ом: до 3 попыток.
+  for (let i = 0; i < 3; i++) {
+    await open(page, '/');
+    await page.locator('[data-city-no]').first().dispatchEvent('click');
+    if (await item.waitFor({ timeout: 45_000 }).then(() => true).catch(() => false)) break;
+  }
   await expect(item).toBeVisible();
   await Promise.all([page.waitForLoadState('domcontentloaded'), item.click()]);
   await page.waitForTimeout(3000);

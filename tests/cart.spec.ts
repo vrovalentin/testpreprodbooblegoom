@@ -24,16 +24,18 @@ test.describe('Добавление в корзину', () => {
   });
 
   test('CART-03 из результатов поиска', async ({ page }) => {
-    // Берём название товара в наличии и ищем его.
-    const url = await findProductInStock(page);
-    await open(page, url);
-    const name = (await page.locator('h1').innerText()).trim();
-    await page.locator('input.hdr-search__input').fill(name);
+    // Точное название товара сразу открывает его карточку, поэтому ищем по части названия.
+    await open(page, '/');
+    await page.locator('input.hdr-search__input').fill('Чудо-дерево');
     await page.locator('input.hdr-search__input').press('Enter');
     await expect(page).toHaveURL(/\/search\//);
+    await page.waitForLoadState('load', { timeout: 90_000 }).catch(() => {});
     const btn = page.locator('.c-items [data-add2basket]:visible').first();
-    await expect(btn).toBeVisible();
+    await expect(btn, 'в выдаче есть товар в наличии').toBeVisible();
+    // Кнопка должна добавлять в корзину, а не открывать карточку товара.
+    const url = page.url();
     await clickAddToCart(page, btn);
+    expect(page.url(), 'остались на странице поиска').toBe(url);
     await expect.poll(() => headerCartCount(page)).toBe(1);
   });
 

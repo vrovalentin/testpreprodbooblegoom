@@ -116,7 +116,7 @@ test.describe('Фильтры', () => {
 
   test('FLT-05 сброс фильтра', async ({ page }) => {
     await open(page, lego);
-    await page.getByText('Сбросить', { exact: true }).locator('visible=true').first().click();
+    await page.getByRole('button', { name: 'Очистить все' }).click();
     await expect(page).not.toHaveURL(/brand-is-lego/, { timeout: 120_000 });
     const t = await titles(page);
     expect(t.some((x) => !x.toLowerCase().includes('lego'))).toBe(true);
