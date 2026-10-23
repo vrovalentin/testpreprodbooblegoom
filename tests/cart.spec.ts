@@ -62,7 +62,7 @@ test.describe('Корзина', () => {
     const btn = await openCategoryWithStock(page);
     const { BASKET_PRICE } = await clickAddToCart(page, btn);
     await openCart(page);
-    await expect(page.getByText('Ваш заказ')).toBeVisible();
+    await expect(page.getByText('Ваш заказ').filter({ visible: true }).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Оформить заказ' })).toBeVisible();
     const qty = page.locator('[data-entity=basket-item-quantity-field]').first();
     await expect(qty).toHaveValue('1');

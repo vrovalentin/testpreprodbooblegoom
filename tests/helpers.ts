@@ -115,8 +115,13 @@ export async function findProductInStock(page: Page, cityPrefix = ''): Promise<s
 
 /** Открыть корзину и дождаться, пока подгрузится список товаров. */
 export async function openCart(page: Page) {
-  await open(page, '/cart/');
-  await expect(page.getByText(/Ваш заказ|Ваша корзина пуста/).first()).toBeVisible({ timeout: 90_000 });
+  const ready = page.getByText(/Ваш заказ|Ваша корзина пуста/).filter({ visible: true }).first();
+  // Список товаров дорисовывается скриптом; если не дорисовался, открываем корзину заново.
+  for (let i = 0; i < 3; i++) {
+    await open(page, '/cart/');
+    if (await ready.waitFor({ timeout: 60_000 }).then(() => true).catch(() => false)) break;
+  }
+  await expect(ready).toBeVisible();
 }
 
 export const TEST_USER = {
@@ -160,21 +165,29 @@ export async function login(page: Page, loginValue = TEST_USER.login, password =
   return { ok: Boolean(body?.data?.SUCCESS_TEXT), error: body?.data?.ERROR as string | undefined, modal };
 }
 
-// Города: id из окна выбора города.
-export const CITY = { vladivostok: '3040', khabarovsk: '2917' };
-
-/** Сменить город через cookie (как это делает окно выбора города). */
-export async function setCity(page: Page, cityId: string) {
-  const domain = new URL(process.env.BASE_URL ?? 'https://preprod.boobl-goom.ru').host;
-  await page.context().addCookies([{ name: 'GEO_CITY_XML_ID', value: cityId, domain, path: '/' }]);
+/** Сменить город через окно выбора города (город хранится на сервере, cookie недостаточно). */
+export async function setCity(page: Page, city: string) {
+  await open(page, '/');
+  await page.locator('[data-city-no]').first().dispatchEvent('click');
+  const item = page.locator('.city-subnav__i', { hasText: city }).first();
+  await expect(item).toBeVisible();
+  await Promise.all([page.waitForLoadState('domcontentloaded'), item.click()]);
+  await page.waitForTimeout(3000);
+  await open(page, '/');
+  await expect(page.getByText(`Вы здесь: ${city}`).or(page.locator('header').getByText(city)).first()).toBeAttached();
 }
 
 /** Очистить корзину (у тестового аккаунта она хранится между прогонами). */
 export async function clearCart(page: Page) {
   await openCart(page);
-  if (await page.getByText('Ваша корзина пуста').isVisible().catch(() => false)) return;
+  if (await page.getByText('Ваша корзина пуста').filter({ visible: true }).count()) return;
   if (!(await page.locator('[data-entity=basket-item-quantity-field]').count())) return;
-  await page.getByText('Выбрать всё').first().click();
-  await page.getByText('Удалить выбранные').first().click();
+  // Удаляем товары крестиком в строке, пока корзина не опустеет.
+  for (let i = 0; i < 10; i++) {
+    const del = page.locator('[data-entity="basket-item-delete"]:visible').first();
+    if (!(await del.count())) break;
+    await del.click();
+    await page.waitForTimeout(3000);
+  }
   await expect(page.getByText('0 шт.').first()).toBeVisible({ timeout: 60_000 });
 }

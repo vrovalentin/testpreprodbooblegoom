@@ -1,6 +1,6 @@
 import {
   test, expect, open, openCart, clickAddToCart, findProductInStock, login, hasTestUser,
-  setCity, clearCart, CITY,
+  setCity, clearCart,
 } from './helpers';
 
 // Оформление проверяется до последнего шага. Кнопку «Оформить заказ» на шаге оплаты тесты не нажимают,
@@ -10,11 +10,20 @@ import {
  *  Повторно жать «В корзину» нельзя: после добавления кнопка ведёт в корзину. Поэтому сразу ставим нужное количество. */
 async function fillCart(page, minSum = 1000, cityPrefix = '') {
   const url = await findProductInStock(page, cityPrefix);
-  await open(page, url);
-  const price = Number(await page.locator('[itemprop=offers] [itemprop=price], [itemprop=price]').first().getAttribute('content'));
-  const qty = Math.max(1, Math.ceil(minSum / price));
-  for (let i = 1; i < qty; i++) await page.locator('[data-quantity-btn-plus]:visible').first().click();
-  return clickAddToCart(page);
+  // Если скрипты страницы не догрузились, кнопки не реагируют: открываем товар заново, до 3 попыток.
+  for (let attempt = 1; ; attempt++) {
+    await open(page, url);
+    const price = Number(await page.locator('[itemprop=price]').first().getAttribute('content'));
+    const qty = Math.max(1, Math.ceil(minSum / price));
+    const field = page.locator('[data-quantity-btn-plus]:visible').first().locator('xpath=..').locator('input');
+    for (let i = 1; i < qty; i++) await page.locator('[data-quantity-btn-plus]:visible').first().click();
+    try {
+      await expect(field).toHaveValue(String(qty), { timeout: 10_000 });
+      return await clickAddToCart(page);
+    } catch (e) {
+      if (attempt >= 3) throw e;
+    }
+  }
 }
 
 test.describe('Оформление заказа: гость', () => {
@@ -41,13 +50,13 @@ test.describe('Оформление заказа: гость', () => {
 });
 
 test.describe('Оформление заказа: тестовый аккаунт', () => {
-  // Один аккаунт и одна корзина на все тесты: запускаем по очереди.
-  test.describe.configure({ mode: 'serial', timeout: 10 * 60_000 });
+  // Один аккаунт и одна корзина: тесты файла идут по очереди в одном воркере (fullyParallel выключен).
+  test.describe.configure({ timeout: 10 * 60_000 });
   test.skip(() => !hasTestUser(), 'нужен тестовый аккаунт: TEST_USER_LOGIN / TEST_USER_PASSWORD в .env');
 
   test('ORD-02 / PICK-01 / PICK-02 Хабаровск: самовывоз до шага оплаты', async ({ page }) => {
-    await setCity(page, CITY.khabarovsk);
     expect((await login(page)).ok).toBe(true);
+    await setCity(page, 'Хабаровск');
     await clearCart(page);
     await fillCart(page, 1000, '/khabarovsk');
     await openCart(page);
@@ -78,18 +87,25 @@ test.describe('Оформление заказа: тестовый аккаун�
     await expect(page.locator('#soa-property-3')).toBeVisible();
 
     // ORD-03: без подтверждённого телефона заказ не оформить
-    await expect(page.locator('#bx-soa-orderSave')).toHaveClass(/disabled/);
+    await expect(page.locator('button#bx-soa-orderSave')).toHaveClass(/disabled/);
   });
 
   test('DLV-01 / DLV-02 Хабаровск: доставка по адресу, форма адреса', async ({ page }) => {
-    await setCity(page, CITY.khabarovsk);
     expect((await login(page)).ok).toBe(true);
+    await setCity(page, 'Хабаровск');
     await openCart(page);
     if (await page.getByText('0 шт.').first().isVisible().catch(() => false)) await fillCart(page, 1000, '/khabarovsk');
     await open(page, '/order/');
 
-    await page.locator('label.check__label', { hasText: 'Доставка по адресу' }).click();
-    await expect(page.getByText('Адрес доставки').first()).toBeVisible({ timeout: 60_000 });
+    const address = page.getByText('Адрес доставки').filter({ visible: true }).first();
+    for (let i = 0; i < 3 && !(await address.isVisible()); i++) {
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes('sale.order.ajax'), { timeout: 120_000 }).catch(() => null),
+        page.locator('label.check__label', { hasText: 'Доставка по адресу' }).click(),
+      ]);
+      await address.waitFor({ timeout: 30_000 }).catch(() => {});
+    }
+    await expect(address).toBeVisible();
     await page.locator('.order-address__add:visible').first().click();
     const form = page.locator('form[name=modal_add_delivery_address]');
     await expect(form).toBeVisible();
@@ -102,11 +118,12 @@ test.describe('Оформление заказа: тестовый аккаун�
 
   test('ORD-00 Владивосток: оформление доступно', async ({ page }) => {
     // Сейчас на препроде падает: «Для выбранного региона оформление заказа временно недоступно».
-    await setCity(page, CITY.vladivostok);
     expect((await login(page)).ok).toBe(true);
+    await setCity(page, 'Владивосток');
     await clearCart(page);
     await fillCart(page, 1000);
     await open(page, '/order/');
+    await expect(page.getByText('Владивосток').first()).toBeVisible();
     await expect(page.getByText('Для выбранного региона оформление заказа временно недоступно')).toHaveCount(0);
     await expect(page.getByText('Самовывоз').first()).toBeVisible();
   });
