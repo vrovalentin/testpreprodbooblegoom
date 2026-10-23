@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Подхватываем логины и пароли из файла .env (он не попадает в git).
+try { process.loadEnvFile('.env'); } catch { /* файла нет: берём переменные окружения */ }
+
 // Препрод отвечает медленно (каталог 20–30 с), поэтому таймауты увеличены.
 export default defineConfig({
   testDir: './tests',
