@@ -1,15 +1,4 @@
-import { test, expect, open } from './helpers';
-
-const LOGIN = process.env.TEST_USER_LOGIN;
-const PASSWORD = process.env.TEST_USER_PASSWORD;
-
-async function openAuthModal(page) {
-  await open(page, '/');
-  await page.locator('a[href="/include/modals/auth.php"]').first().click();
-  const modal = page.locator('.modal-popup__inner--auth');
-  await expect(modal).toBeVisible();
-  return modal;
-}
+import { test, expect, open, openAuthModal, login, hasTestUser, TEST_USER } from './helpers';
 
 test.describe('Авторизация', () => {
   test('AUTH-01 окно входа', async ({ page }) => {
@@ -26,7 +15,7 @@ test.describe('Авторизация', () => {
   test('AUTH-02 пустая форма не отправляется', async ({ page }) => {
     const modal = await openAuthModal(page);
     let sent = false;
-    page.on('request', (r) => { if (r.method() === 'POST' && r.url().includes('/include/modals/auth.php')) sent = true; });
+    page.on('request', (r) => { if (/action=check(Password|Phone)/.test(r.url())) sent = true; });
     await modal.getByRole('button', { name: 'Войти' }).click();
     await page.waitForTimeout(2000);
     await expect(modal).toBeVisible();
@@ -34,24 +23,25 @@ test.describe('Авторизация', () => {
   });
 
   test('AUTH-03 вход по e-mail и паролю', async ({ page }) => {
-    test.skip(!LOGIN || !PASSWORD, 'нужен тестовый аккаунт: TEST_USER_LOGIN / TEST_USER_PASSWORD');
-    const modal = await openAuthModal(page);
-    await modal.locator('#LOGIN').fill(LOGIN!);
-    await modal.locator('label.radio:has([data-check-by-email])').click();
-    await modal.locator('#PASSWORD').fill(PASSWORD!);
-    await modal.getByRole('button', { name: 'Войти' }).click();
-    await expect(modal).toBeHidden();
+    test.skip(!hasTestUser(), 'нужен тестовый аккаунт: TEST_USER_LOGIN / TEST_USER_PASSWORD в .env');
+    const res = await login(page);
+    expect(res.error, 'сервер не вернул ошибку').toBeUndefined();
+    expect(res.ok).toBe(true);
+    await open(page, '/');
     await expect(page.locator('a[href="/include/modals/auth.php"]')).toHaveCount(0);
   });
 
   test('AUTH-04 неверный пароль', async ({ page }) => {
-    test.skip(!LOGIN, 'нужен тестовый аккаунт: TEST_USER_LOGIN');
-    const modal = await openAuthModal(page);
-    await modal.locator('#LOGIN').fill(LOGIN!);
-    await modal.locator('label.radio:has([data-check-by-email])').click();
-    await modal.locator('#PASSWORD').fill('wrong-password-123');
-    await modal.getByRole('button', { name: 'Войти' }).click();
-    await expect(modal.locator('[data-error-form]')).not.toBeEmpty();
+    test.skip(!hasTestUser(), 'нужен тестовый аккаунт: TEST_USER_LOGIN в .env');
+    const res = await login(page, TEST_USER.login, 'wrong-password-123');
+    expect(res.error).toBe('Неверный логин или пароль.');
+    await expect(res.modal.locator('[data-error-form]').first()).toHaveText('Неверный логин или пароль.');
+  });
+
+  test('AUTH-05 несуществующий пользователь', async ({ page }) => {
+    const res = await login(page, 'autotest-nobody@example.com', 'whatever-123');
+    expect(res.ok).toBe(false);
+    expect(res.error).toBeTruthy();
   });
 });
 

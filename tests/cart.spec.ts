@@ -38,8 +38,8 @@ test.describe('Добавление в корзину', () => {
   });
 
   test('CART-04 из избранного', async ({ page }) => {
-    const btn = await openCategoryWithStock(page);
-    const card = page.locator('.c-items [data-entity=item]').filter({ has: btn }).first();
+    await openCategoryWithStock(page);
+    const card = page.locator('.c-items [data-entity=item]').filter({ has: page.locator('[data-add2basket]') }).first();
     await card.locator('[data-add2favorites]').click();
     await page.waitForTimeout(3000);
     await open(page, '/personal/favorites/');
@@ -86,7 +86,9 @@ test.describe('Корзина', () => {
     await openCart(page);
     await page.getByText('Выбрать всё').click();
     await page.getByText('Удалить выбранные').click();
-    await expect(page.getByText('Ваша корзина пуста')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/был удален из корзины/).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText('Восстановить').first()).toBeVisible();
+    await expect(page.getByText('0 шт.').first()).toBeVisible();
   });
 
   test('CART-10 минимальная сумма заказа 500 ₽', async ({ page }) => {
@@ -94,7 +96,7 @@ test.describe('Корзина', () => {
     const { BASKET_PRICE } = await clickAddToCart(page, btn);
     test.skip(BASKET_PRICE >= 500, `товар стоит ${BASKET_PRICE} ₽, проверка суммы < 500 ₽ невозможна`);
     await openCart(page);
-    await expect(page.getByRole('button', { name: 'Оформить заказ' })).toBeDisabled();
-    await expect(page.getByText('Минимальная сумма товаров в заказе - 500 ₽')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Оформить заказ' }).first()).toHaveClass(/disabled/);
+    await expect(page.getByText('Минимальная сумма товаров в заказе - 500 ₽').first()).toBeVisible();
   });
 });

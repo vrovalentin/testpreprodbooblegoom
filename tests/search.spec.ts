@@ -24,7 +24,7 @@ test.describe('Поиск', () => {
     await input(page).fill('qwzxqwzxqwzx');
     await input(page).press('Enter');
     await page.waitForLoadState('domcontentloaded');
-    await expect(page.getByText(/ничего не найдено|найдено 0/i).first()).toBeVisible();
+    await expect(page.getByText(/По запросу "qwzxqwzxqwzx" найдено 0 товаров/)).toBeVisible();
   });
 
   test('SRCH-04 поиск по коду товара', async ({ page }) => {
@@ -49,8 +49,10 @@ test.describe('Поиск', () => {
     await input(page).fill('конструктор');
     await input(page).press('Enter');
     const total = Number((await page.getByText(/найдено \d+ товар/).innerText()).match(/найдено (\d+)/)![1]);
+    const counter = page.waitForResponse((r) => r.url().includes('action=filterButton'), { timeout: 120_000 });
     await page.locator('form[name=elastic_filter] label.b-check__label').first().click();
-    const apply = page.locator('form[name=elastic_filter] .btn--orange:visible', { hasText: /Показать \d+/ }).first();
+    await counter;
+    const apply = page.locator('[data-total-button]:visible').first();
     const n = Number((await apply.innerText()).match(/\d+/)![0]);
     expect(n).toBeGreaterThan(0);
     expect(n).toBeLessThan(total);
